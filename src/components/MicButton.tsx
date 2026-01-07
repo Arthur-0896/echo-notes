@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Mic, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { uploadToS3 } from '@/integrations/aws/s3Upload';
 
 interface MicButtonProps {
-  onRecordingComplete: (audioBlob: Blob) => void;
+  onRecordingComplete?: (audioBlob: Blob, s3Url?: string) => void;
   isProcessing: boolean;
 }
 
@@ -43,9 +44,30 @@ const MicButton = ({ onRecordingComplete, isProcessing }: MicButtonProps) => {
         }
       };
 
-      mediaRecorder.onstop = () => {
+      mediaRecorder.onstop = async () => {
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        onRecordingComplete(blob);
+        // S3 upload config - replace with your actual values or use env vars
+        const bucket = import.meta.env.VITE_S3_BUCKET;
+        const region = import.meta.env.VITE_S3_REGION;
+        const accessKeyId = import.meta.env.VITE_S3_ACCESS_KEY_ID;
+        const secretAccessKey = import.meta.env.VITE_S3_SECRET_ACCESS_KEY;
+        let s3Url = undefined;
+        if (bucket && region && accessKeyId && secretAccessKey) {
+          try {
+            const fileName = `audio-${Date.now()}.webm`;
+            s3Url = await uploadToS3({
+              file: blob,
+              fileName,
+              bucket,
+              region,
+              accessKeyId,
+              secretAccessKey,
+            });
+          } catch (err) {
+            console.error('S3 upload failed:', err);
+          }
+        }
+        onRecordingComplete && onRecordingComplete(blob, s3Url);
         stream.getTracks().forEach(track => track.stop());
       };
 
